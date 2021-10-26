@@ -9,13 +9,97 @@ var GENESIS = '0x000000000000000000000000000000000000000000000000000000000000000
 
 // This is the ABI for your contract (get it from Remix, in the 'Compile' tab)
 // ============================================================
-var abi = []; // FIXME: fill this in with your contract's ABI //Be sure to only have one array, not two
+var abi = [
+	{
+		"inputs": [
+			{
+				"internalType": "address",
+				"name": "creditor",
+				"type": "address"
+			},
+			{
+				"internalType": "uint32",
+				"name": "amount",
+				"type": "uint32"
+			},
+			{
+				"internalType": "address[]",
+				"name": "cycle",
+				"type": "address[]"
+			},
+			{
+				"internalType": "uint32",
+				"name": "min_debt",
+				"type": "uint32"
+			}
+		],
+		"name": "add_IOU",
+		"outputs": [],
+		"stateMutability": "nonpayable",
+		"type": "function"
+	},
+	{
+		"inputs": [
+			{
+				"internalType": "address",
+				"name": "debtor",
+				"type": "address"
+			},
+			{
+				"internalType": "address",
+				"name": "creditor",
+				"type": "address"
+			}
+		],
+		"name": "lookup",
+		"outputs": [
+			{
+				"internalType": "uint32",
+				"name": "",
+				"type": "uint32"
+			}
+		],
+		"stateMutability": "view",
+		"type": "function"
+	},
+	{
+		"inputs": [
+			{
+				"internalType": "address",
+				"name": "debtor",
+				"type": "address"
+			}
+		],
+		"name": "user_IOUs",
+		"outputs": [
+			{
+				"components": [
+					{
+						"internalType": "address",
+						"name": "creditor",
+						"type": "address"
+					},
+					{
+						"internalType": "uint32",
+						"name": "amount",
+						"type": "uint32"
+					}
+				],
+				"internalType": "struct IOU[]",
+				"name": "",
+				"type": "tuple[]"
+			}
+		],
+		"stateMutability": "view",
+		"type": "function"
+	}
+]; // FIXME: fill this in with your contract's ABI //Be sure to only have one array, not two
 
 // ============================================================
 abiDecoder.addABI(abi);
 // call abiDecoder.decodeMethod to use this - see 'getAllFunctionCalls' for more
 
-var contractAddress = ''; // FIXME: fill this in with your contract's address/hash
+var contractAddress = '0x8e30846f7a8b9A79C8D82005d26258653A4Af9D8'; // FIXME: fill this in with your contract's address/hash
 var BlockchainSplitwise = new web3.eth.Contract(abi, contractAddress);
 
 // =============================================================================
@@ -23,6 +107,21 @@ var BlockchainSplitwise = new web3.eth.Contract(abi, contractAddress);
 // =============================================================================
 
 // TODO: Add any helper functions here!
+async function getCreditors(user) {
+	let IOUs = await BlockchainSplitwise.methods.user_IOUs(user).call({from:web3.eth.defaultAccount});
+	let creditors = IOUs.map((IOU) => { return IOU.creditor; });
+	return creditors;
+}
+
+async function getCreditorsAdjusted(debtor, creditor) {
+	return async (user) => { 
+		creditors = await getCreditors(user);
+		if (user === debtor && !creditors.includes(creditor)) {
+			creditors.push(creditor);
+		}
+		return creditors;
+	}
+}
 
 // TODO: Return a list of all users (creditors or debtors) in the system
 // You can return either:
@@ -30,26 +129,65 @@ var BlockchainSplitwise = new web3.eth.Contract(abi, contractAddress);
 // OR
 //   - a list of everyone currently owing or being owed money
 async function getUsers() {
-
+	// Get all add_IOU calls and add to and from addresses to a set
+	let users = new Set();
+	let calls = await getAllFunctionCalls(contractAddress, "add_IOU");
+	calls.forEach((call) => {
+		users.add(call.from);
+		users.add(call.args[0]); // creditor
+	})
+	return Array.from(users);
 }
 
 // TODO: Get the total amount owed by the user specified by 'user'
 async function getTotalOwed(user) {
-
+	let IOUs = await BlockchainSplitwise.methods.user_IOUs(user).call({from:web3.eth.defaultAccount});
+	// console.log(IOUs);
+	let debts = IOUs.map((IOU) => { return parseInt(IOU.amount); });
+	// console.log(typeof(debts[0]));
+	return debts.reduce((total, debt) => { return total + debt}, 0);
 }
 
 // TODO: Get the last time this user has sent or received an IOU, in seconds since Jan. 1, 1970
 // Return null if you can't find any activity for the user.
 // HINT: Try looking at the way 'getAllFunctionCalls' is written. You can modify it if you'd like.
 async function getLastActive(user) {
-
+	user = user.toLowerCase();
+	let calls = await getAllFunctionCalls(contractAddress, "add_IOU");
+	calls = calls.filter((call) => {
+		return call.from === user || call.args[0] === user; // sender or creditor
+	});
+	// console.log(calls);
+	if (calls.length === 0) { return null; }
+	return calls[calls.length - 1].t;
 }
 
 // TODO: add an IOU ('I owe you') to the system
 // The person you owe money is passed as 'creditor'
 // The amount you owe them is passed as 'amount'
 async function add_IOU(creditor, amount) {
-
+	let debtor = web3.eth.defaultAccount;
+	let cycle = await doBFS(creditor, debtor, getCreditors);
+	if (cycle === null) { 
+		cycle = []; 
+	}
+	cycle.unshift(debtor);
+	// console.log(cycle);
+	// console.log(debtor);
+	// console.log(creditor);
+	let min_debt = Number.MAX_SAFE_INTEGER;
+	console.log(cycle.length - 1);
+	for (let i = 0; i < cycle.length - 1; i++) {
+		let debt = await BlockchainSplitwise.methods.lookup(cycle[i], cycle[i+1]).call({from:web3.eth.defaultAccount});
+		if (cycle[i] === debtor && cycle[i+1] === creditor) { // second condition shouldn't be necessary
+			debt += amount;
+		}
+		console.log(debt);
+		min_debt = (min_debt > debt) ? debt : min_debt;
+	}
+	if (min_debt === Number.MAX_SAFE_INTEGER) min_debt = 0;
+	console.log(min_debt);
+	return BlockchainSplitwise.methods.add_IOU(creditor, amount, cycle, min_debt).send({from:web3.eth.defaultAccount})
 }
 
 // =============================================================================
@@ -81,7 +219,7 @@ async function getAllFunctionCalls(addressOfContract, functionName) {
 	  			function_calls.push({
 	  				from: txn.from.toLowerCase(),
 	  				args: args,
-						t: time.timestamp
+					t: time.timestamp
 	  			})
 	  		}
 	  	}
@@ -228,6 +366,64 @@ async function sanityCheck() {
 	score += check("getLastActive(0) works", difference <= 60 && difference >= -3); // -3 to 60 seconds
 
 	console.log("Final Score: " + score +"/21");
+	return score;
 }
 
-//sanityCheck() //Uncomment this line to run the sanity check when you first open index.html
+async function sanityCheckCycle() {
+	console.log ("\nTEST", "Two People Cycle");
+
+	var score = 0;
+
+	var accounts = await web3.eth.getAccounts();
+	web3.eth.defaultAccount = accounts[0];
+
+	var users = await getUsers();
+	score += check("getUsers() initially empty", users.length === 0);
+
+	var owed = await getTotalOwed(accounts[0]);
+	score += check("getTotalOwed(0) initially empty", owed === 0);
+
+	var lookup_0_1 = await BlockchainSplitwise.methods.lookup(accounts[0], accounts[1]).call({from:web3.eth.defaultAccount});
+	score += check("lookup(0,1) initially 0", parseInt(lookup_0_1, 10) === 0);
+
+	var response = await add_IOU(accounts[1], "10");
+	console.log("attempt to add 0 --> 1 += 10");
+
+	users = await getUsers();
+	score += check("getUsers() now length 2", users.length === 2);
+
+	owed = await getTotalOwed(accounts[0]);
+	score += check("getTotalOwed(0) now 10", owed === 10);
+
+	lookup_0_1 = await BlockchainSplitwise.methods.lookup(accounts[0], accounts[1]).call({from:web3.eth.defaultAccount});
+	score += check("lookup(0,1) now 10", parseInt(lookup_0_1, 10) === 10);
+
+	// 1 owes 0 now
+	web3.eth.defaultAccount = accounts[1];
+	response = await add_IOU(accounts[0], "5");
+	console.log("attempt to add 1 --> 0 += 5");
+
+	owed = await getTotalOwed(accounts[0]);
+	score += check("getTotalOwed(0) now 5", owed === 5);
+	console.log(owed)
+
+	owed = await getTotalOwed(accounts[1]);
+	score += check("getTotalOwed(1) now 0", owed === 0);
+	console.log(owed)
+
+	lookup_0_1 = await BlockchainSplitwise.methods.lookup(accounts[0], accounts[1]).call({from:web3.eth.defaultAccount});
+	score += check("lookup(0,1) now 5", parseInt(lookup_0_1, 10) === 5);
+
+	lookup_1_0 = await BlockchainSplitwise.methods.lookup(accounts[1], accounts[0]).call({from:web3.eth.defaultAccount});
+	score += check("lookup(1,0) now 0", parseInt(lookup_1_0, 10) === 0);
+
+	console.log("Final Score: " + score +"/30");
+	return score;
+}
+
+async function runTests() {
+	// var a = await sanityCheck() //Uncomment this line to run the sanity check when you first open index.html
+	var b = await sanityCheckCycle()
+}
+
+runTests()
