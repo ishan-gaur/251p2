@@ -99,7 +99,7 @@ var abi = [
 abiDecoder.addABI(abi);
 // call abiDecoder.decodeMethod to use this - see 'getAllFunctionCalls' for more
 
-var contractAddress = '0x866Cc3efa7c20E03684d09dE7A846A565ce5992a'; // FIXME: fill this in with your contract's address/hash
+var contractAddress = '0xddd4315a9D84c2DAEc804dd71b45DE3DE53e50B9'; // FIXME: fill this in with your contract's address/hash
 var BlockchainSplitwise = new web3.eth.Contract(abi, contractAddress, {gas: 220000}); // for super long loop
 
 // =============================================================================
@@ -145,9 +145,12 @@ async function getLastActive(user) {
 	calls = calls.filter((call) => {
 		return call.from === user || call.args[0] === user; // sender or creditor
 	});
-	
 	if (calls.length === 0) { return null; }
-	return calls[calls.length - 1].t;
+
+	times = calls.map((call) => {
+		return call.t; // sender or creditor
+	});
+	return Math.max(...times);
 }
 
 // TODO: add an IOU ('I owe you') to the system
@@ -529,4 +532,4 @@ async function sanityCheckRandom() {
 // sanityCheck() //Uncomment this line to run the sanity check when you first open index.html
 // sanityCheckSimpleCycle()
 // sanityCheckCycle()
-sanityCheckRandom()
+// sanityCheckRandom()
