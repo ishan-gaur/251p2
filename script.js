@@ -99,8 +99,8 @@ var abi = [
 abiDecoder.addABI(abi);
 // call abiDecoder.decodeMethod to use this - see 'getAllFunctionCalls' for more
 
-var contractAddress = '0x8e30846f7a8b9A79C8D82005d26258653A4Af9D8'; // FIXME: fill this in with your contract's address/hash
-var BlockchainSplitwise = new web3.eth.Contract(abi, contractAddress);
+var contractAddress = '0x97Ce172Eb0343aa567ef5a48F233116780982DeF'; // FIXME: fill this in with your contract's address/hash
+var BlockchainSplitwise = new web3.eth.Contract(abi, contractAddress, {gas: 300000});
 
 // =============================================================================
 //                            Functions To Implement
@@ -369,7 +369,7 @@ async function sanityCheck() {
 	return score;
 }
 
-async function sanityCheckCycle() {
+async function sanityCheckSimpleCycle() {
 	console.log ("\nTEST", "Two People Cycle");
 
 	var score = 0;
@@ -418,6 +418,43 @@ async function sanityCheckCycle() {
 	score += check("lookup(1,0) now 0", parseInt(lookup_1_0, 10) === 0);
 
 	console.log("Final Score: " + score +"/30");
+	return score;
+}
+
+async function sanityCheckCycle() {
+	console.log ("\nTEST", "Two People Cycle");
+
+	var score = 0;
+
+	var accounts = await web3.eth.getAccounts();
+	web3.eth.defaultAccount = accounts[0];
+
+	var users = await getUsers();
+	score += check("getUsers() initially empty", users.length === 0);
+
+	for (let i = 0; i < 10; i++) {
+		var owed = await getTotalOwed(accounts[i]);
+		score += check("getTotalOwed(" + i + ") initially empty", owed === 0);
+	}
+
+	for (let i = 0; i < 9; i++) {
+		web3.eth.defaultAccount = accounts[i];
+		response = await add_IOU(accounts[i+1], "10");
+		console.log("attempt to add " + i + " --> " + (i + 1) + " += 10");
+		lookup = await BlockchainSplitwise.methods.lookup(accounts[i], accounts[i+1]).call({from:web3.eth.defaultAccount});
+		score += check("lookup(" + i + "," + (i + 1) + ") now 10", parseInt(lookup, 10) === 10);
+	}
+
+	web3.eth.defaultAccount = accounts[9];
+	response = await add_IOU(accounts[0], "10");
+	console.log("attempt to add 9 --> 0 += 10");
+
+	for (let i = 0; i < 10; i++) {
+		lookup = await BlockchainSplitwise.methods.lookup(accounts[i], accounts[(i+1) % 10]).call({from:web3.eth.defaultAccount});
+		score += check("lookup(" + i + "," + ((i+1) % 10) + ") now 0", parseInt(lookup, 10) === 0);
+	}
+
+	console.log("Final Score: " + score +"/90");
 	return score;
 }
 
