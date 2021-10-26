@@ -99,7 +99,7 @@ var abi = [
 abiDecoder.addABI(abi);
 // call abiDecoder.decodeMethod to use this - see 'getAllFunctionCalls' for more
 
-var contractAddress = '0xF5a094a8e92db5960aa89aa50F8CE2d21Bad2346'; // FIXME: fill this in with your contract's address/hash
+var contractAddress = '0x866Cc3efa7c20E03684d09dE7A846A565ce5992a'; // FIXME: fill this in with your contract's address/hash
 var BlockchainSplitwise = new web3.eth.Contract(abi, contractAddress, {gas: 220000}); // for super long loop
 
 // =============================================================================
@@ -165,9 +165,11 @@ async function add_IOU(creditor, amount) {
 	let min_debt = Number.MAX_SAFE_INTEGER;
 	for (let i = 0; i < cycle.length - 1; i++) {
 		let debt = await BlockchainSplitwise.methods.lookup(cycle[i], cycle[i+1]).call({from:web3.eth.defaultAccount});
+		debt = parseInt(debt, 10);
 		if (cycle[i] === debtor && cycle[i+1] === creditor) { // second condition shouldn't be necessary
 			debt += amount; // account for the debt that hasn't been added on chain
 		}
+		console.log("Step " + i + " debt " + debt + " min " + min_debt);
 		min_debt = (min_debt > debt) ? debt : min_debt;
 	}
 	if (min_debt === Number.MAX_SAFE_INTEGER) min_debt = 0;
