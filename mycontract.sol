@@ -10,7 +10,7 @@ contract BlockchainSplitwise {
     
     // changed public to external as I don't use it in my code
     function lookup(address debtor, address creditor) external view returns (uint32) {
-        if (debtor == creditor) { return 10; }
+        if (debtor == creditor) { return 0; }
         int32 index = lookup_IOU(debtor, creditor);
         uint32 balance = (index < 0) ? 0 : balances[debtor][uint32(index)].amount;
         return balance;
